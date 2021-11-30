@@ -3,7 +3,7 @@ import itertools
 import numpy as np
 from scipy.optimize import linprog
 
-from state import State
+from src.pursuit.state import State
 
 
 class Game:
@@ -71,18 +71,19 @@ class Game:
 
         # alternate play?
         self.alternate = alternate
+        if not self.alternate:
+            self.max_stages = max_stages // 2
+        
         self.inc_cost = 1
         self.fail_cost = np.inf
 
-    def print_game(self, state_in=None):
+    def print_game(self):
         """Print a graphical depiction of the state to the terminal.
 
         Args:
             state_in (State, optional): The current state. Defaults to the game's state.
         """
-        if state_in is None:
-            state_in = self.state
-        state = state_in.copy()
+        state = self.state.copy()
 
         board_str = ""
         for row in range(-1, self.board_height + 1):
@@ -90,7 +91,7 @@ class Game:
             for col in range(-1, self.board_width + 1):
                 # mark zebra and lion poistions
                 is_zebra = (col, row) == (state.x, state.y)
-                is_lion = (col, row) == self.get_lion_coord(state)
+                is_lion = (col, row) == self.get_lion_coord()
                 if is_zebra and is_lion:
                     row_str += "X"
                 elif is_zebra:
@@ -106,10 +107,13 @@ class Game:
                     row_str += "-"
             board_str += f"{row_str}\n"
 
-        print(f"Stage {state.k}")
+        if self.alternate:
+            print(f"Stage {state.k // 2}.{state.k%2}")
+        else:
+            print(f"Stage {state.k}")
         print(board_str)
 
-    def get_lion_coord(self, state_in=None):
+    def get_lion_coord(self):
         """Compute the Lion's current position with respect to the game board coordinates.
 
         Args:
@@ -118,9 +122,7 @@ class Game:
         Returns:
             (int, int): The Lion's (x,y) coordinates
         """
-        if state_in is None:
-            state_in = self.state
-        state = state_in.copy()
+        state = self.state.copy()
 
         cum_lion_spaces = [sum(self.lion_spaces[j] for j in range(i)) for i in range(4)]
 
@@ -219,7 +221,7 @@ class Game:
         state = state_in.copy()
 
         if self.is_exact_catch:
-            return self.get_lion_coord(state) == (state.x, state.y)
+            return self.get_lion_coord() == (state.x, state.y)
 
         cum_lion_spaces = [sum(self.lion_spaces[j] for j in range(i)) for i in range(4)]
 
@@ -344,7 +346,6 @@ class Game:
         ):
             state = State(*state_tuple)
             V[state] = self.fail_cost if self.is_zebra_caught(state) else 0
-
         # recursively compute cost-to-go
         for state_tuple in itertools.product(
             reversed(range(self.max_stages)),
@@ -379,7 +380,7 @@ class Game:
                 sigma[state] = Sigma[j_star]
                 V[state] = V_under
             else:
-                # compute mixed sadle point using linear programming
+                # compute mixed saddle point using linear programming
                 V[state], y_star, z_star = solve_matrix_mixed(A)
                 gamma[state] = {
                     action: y_star.item(i) for i, action in enumerate(Gamma)

@@ -1,11 +1,12 @@
 import numpy as np
 
-from game import Game, choose_action
-from state import State
+from src.pursuit.game import Game, choose_action
+from src.pursuit.state import State
 
-if __name__ == "__main__":
+
+def main():
     s = State(y=2)
-    g = Game(state_init=s, max_stages=7, alternate=False)
+    g = Game(state_init=s, max_stages=14, alternate=False)
     g.inc_cost = 0
     g.fail_cost = 1
 
@@ -40,3 +41,7 @@ if __name__ == "__main__":
             s = State(x=col, y=row)
             V_array[row][col] = V[s]
     print(V_array)
+
+
+if __name__ == "__main__":
+    main()

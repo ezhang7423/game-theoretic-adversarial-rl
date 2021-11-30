@@ -1,0 +1,4 @@
+numpy==1.21.4
+pydeps==1.10.12
+scipy==1.7.3
+stdlib-list==0.8.0
