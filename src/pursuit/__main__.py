@@ -1,3 +1,5 @@
+from functools import reduce
+from operator import mul
 import numpy as np
 from src.pursuit.compute_optimal_policy import choose_action, compute_policies
 from src.pursuit.game import Game
@@ -27,16 +29,18 @@ def main():
 
     J = g.outcome(gamma, sigma)
 
-    print('Game from cost-to-go policies:')
+    print("Game from cost-to-go policies:")
     g.play(gamma, sigma)
     print(f"J = {J}")
 
-    print('Game from RL agents:')
-    gamma_rl = Player()
-    sigma_rl = Player()
-    bootstrap_to_optimal(Game(max_stages=12, alternate=False), gamma_rl, sigma_rl)
+
+    print("Game from RL agents:")
+    g = Game(max_stages=12, alternate=False)
+    gamma_rl = Player(["X", "N", "E", "S", "W"], reduce(mul, g.state.board_shape), sum(g.state.lion_spaces), False)
+    sigma_rl = Player(list(range(-g.lion_speed, g.lion_speed + 1)), reduce(mul, g.state.board_shape), sum(g.state.lion_spaces), True)
+    bootstrap_to_optimal(g, gamma_rl, sigma_rl)
     g.play(gamma_rl, sigma_rl)
-    print(f'J = {g.outcome(gamma_rl, sigma_rl)}')
+    print(f"J = {g.outcome(gamma_rl, sigma_rl)}")
     # # display the outcome from each of the Zebra's initial squares
     # V_array = np.empty((g.state.board_height, g.state.board_width))
     # for row in range(0, g.state.board_height):
