@@ -1,11 +1,12 @@
 import numpy as np
 from src.pursuit.compute_optimal_policy import choose_action, compute_policies
 from src.pursuit.game import Game
+from src.pursuit.reinforce import Player, bootstrap_to_optimal
 from src.pursuit.state import State
 
 
 def main():
-    g = Game(max_stages=14, alternate=False)
+    g = Game(max_stages=12, alternate=False)
     g.inc_cost = 0
     g.fail_cost = 1
     V, gamma_array, sigma_array = compute_policies(g)
@@ -26,19 +27,27 @@ def main():
 
     J = g.outcome(gamma, sigma)
 
+    print('Game from cost-to-go policies:')
     g.play(gamma, sigma)
     print(f"J = {J}")
 
-    # display the outcome from each of the Zebra's initial squares
-    V_array = np.empty((g.state.board_height, g.state.board_width))
-    for row in range(0, g.state.board_height):
-        for col in range(0, g.state.board_width):
-            if (col, row) in g.state.obstacles:
-                V_array[row][col] = np.NaN
-                continue
-            s = State(x=col, y=row)
-            V_array[row][col] = V[s]
-    print(V_array)
+    print('Game from RL agents:')
+    gamma_rl = Player()
+    sigma_rl = Player()
+    bootstrap_to_optimal(Game(max_stages=12, alternate=False), gamma_rl, sigma_rl)
+    g.play(gamma_rl, sigma_rl)
+    print(f'J = {g.outcome(gamma_rl, sigma_rl)}')
+    # # display the outcome from each of the Zebra's initial squares
+    # V_array = np.empty((g.state.board_height, g.state.board_width))
+    # for row in range(0, g.state.board_height):
+    #     for col in range(0, g.state.board_width):
+    #         if (col, row) in g.state.obstacles:
+    #             V_array[row][col] = np.NaN
+    #             continue
+    #         s = State(x=col, y=row)
+    #         V_array[row][col] = V[s]
+    # print('Outcome of game for each starting state:')
+    # print(V_array)
 
 
 if __name__ == "__main__":
