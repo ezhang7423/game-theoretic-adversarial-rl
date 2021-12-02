@@ -79,7 +79,7 @@ class Game:
             self.max_stages = max_stages // 2
 
         self.inc_cost = 1
-        self.fail_cost = np.inf
+        self.fail_cost = 1e6
 
     def zebra_action_space(self, state_in=None):
         """Return the action space of the Zebra from the current state.

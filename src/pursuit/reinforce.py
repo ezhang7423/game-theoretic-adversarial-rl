@@ -1,7 +1,9 @@
 # Implements vanilla policy gradient in the DARL framework
+import random 
+from functools import cache
 import numpy as np
 from src.pursuit.game import Game
-
+from copy import deepcopy
 from src.pursuit.state import State
 
 STOP_DELTA_OBJECTIVE = (
@@ -12,17 +14,76 @@ STOP_DELTA_OBJECTIVE = (
 def calc_objective(p1, p2, game, silent=True):
     return 0
 
+@cache # ended up being two slow
+def full_extend(trajectory, game: Game, stage):
+    if stage >= game.max_stages:
+        trajectory["reward"] += game.fail_cost
+        return [trajectory]
 
-def generate_all_trajectories(game):
     trajectories = []
+    cur_state = trajectory["state"]
+    # print(game.zebra_action_space(cur_state), game.lion_action_space(cur_state))
+    for z_action in game.zebra_action_space(cur_state):
+        for l_action in game.lion_action_space(cur_state):
+            new_trajectory = deepcopy(trajectory)
+            new_trajectory["p1_actions"].append(z_action)
+            new_trajectory["p2_actions"].append(l_action)
 
-    ## for something
-    trajctory = {
-        "rewards": [],
-        "states": [],
-        "p1_actions": [],
-        "p2_actions": [],
-    }
+            next_state = game.next_state(z_action, l_action, cur_state)
+            new_trajectory["state"] = next_state
+            # next_state.print_state()
+            if game.is_game_over(next_state):
+                new_trajectory["reward"] += (
+                    np.sign(game.is_zebra_caught(next_state) - 0.5) * game.fail_cost
+                )
+
+                trajectories.append(trajectory)
+            else:
+                trajectories += extend(new_trajectory, game, stage + 1)
+
+    return trajectories
+
+def sampled_extend(trajectory, game: Game, stage):
+    if stage >= game.max_stages:
+        trajectory["reward"] += game.fail_cost
+        return [trajectory]
+
+    trajectories = []
+    cur_state = trajectory["state"]
+    # print(game.zebra_action_space(cur_state), game.lion_action_space(cur_state))
+    for z_action in random.choices(game.zebra_action_space(cur_state), k=1):
+        for l_action in game.lion_action_space(cur_state):
+            new_trajectory = deepcopy(trajectory)
+            new_trajectory["p1_actions"].append(z_action)
+            new_trajectory["p2_actions"].append(l_action)
+
+            next_state = game.next_state(z_action, l_action, cur_state)
+            new_trajectory["state"] = next_state
+            # next_state.print_state()
+            if game.is_game_over(next_state):
+                new_trajectory["reward"] += (
+                    np.sign(game.is_zebra_caught(next_state) - 0.5) * game.fail_cost
+                )
+
+                trajectories.append(trajectory)
+            else:
+                trajectories += sampled_extend(new_trajectory, game, stage + 1)
+
+    return trajectories
+
+
+
+def generate_all_trajectories(game: Game):
+    return sampled_extend(
+        {
+            "reward": 0,  # cumulative reward
+            "state": game.state,  # final state of trajectory
+            "p1_actions": [],
+            "p2_actions": [],
+        },
+        game,
+        0,
+    )
 
 
 class Player:
