@@ -1,7 +1,5 @@
-import itertools
-
 import numpy as np
-from scipy.optimize import linprog
+
 
 from src.pursuit.state import State
 
@@ -11,6 +9,10 @@ class Game:
         self,
         state_init=None,
         max_stages=20,
+        k=0,
+        x=1,
+        y=2,
+        lion=0,
         board_shape=(5, 5),
         lion_spaces=(2, 2, 2, 2),
         lion_speed=1,
@@ -34,110 +36,50 @@ class Game:
                 Defaults to True.
         """
         if state_init is None:
-            self.state = State()
-        else:
-            self.state = State(state_init.k, state_init.x, state_init.y, state_init.lion)
+            self.state = State(
+                k,
+                x,
+                y,
+                lion,
+                board_shape,
+                lion_spaces,
+                {
+                    (0, 0),
+                    (0, board_shape[1] - 1),
+                    (board_shape[0] - 1, 0),
+                    (board_shape[0] - 1, board_shape[1] - 1),
+                },
+                alternate,
+            )
 
-        # aliases for state components
-        self.k = self.state.k
-        self.x = self.state.x
-        self.y = self.state.y
-        self.lion = self.state.lion
+        else:
+            self.state = state_init
 
         # temporal and spatial boundaries
         self.max_stages = max_stages
-        self.board_width = board_shape[0]
-        self.board_height = board_shape[1]
 
         # lion behavior
         self.is_exact_catch = lion_spaces == "exact"
         if self.is_exact_catch:
             lion_spaces = (
-                self.board_width - 2,
-                self.board_height - 2,
-                self.board_width - 2,
-                self.board_height - 2,
+                self.state.board_width - 2,
+                self.state.board_height - 2,
+                self.state.board_width - 2,
+                self.state.board_height - 2,
             )
-        self.lion_spaces = lion_spaces
-        self.lion_speed = lion_speed
 
-        # obstacles that the zebra can't go through
-        self.obstacles = {
-            (0, 0),
-            (0, self.board_height - 1),
-            (self.board_width - 1, 0),
-            (self.board_width - 1, self.board_height - 1),
-        }
+        if state_init is None:
+            self.state.lion_spaces = lion_spaces
+
+        self.lion_speed = lion_speed
 
         # alternate play?
         self.alternate = alternate
         if not self.alternate:
             self.max_stages = max_stages // 2
-        
+
         self.inc_cost = 1
         self.fail_cost = np.inf
-
-    def print_game(self):
-        """Print a graphical depiction of the state to the terminal.
-
-        Args:
-            state_in (State, optional): The current state. Defaults to the game's state.
-        """
-        state = self.state.copy()
-
-        board_str = ""
-        for row in range(-1, self.board_height + 1):
-            row_str = ""
-            for col in range(-1, self.board_width + 1):
-                # mark zebra and lion poistions
-                is_zebra = (col, row) == (state.x, state.y)
-                is_lion = (col, row) == self.get_lion_coord()
-                if is_zebra and is_lion:
-                    row_str += "X"
-                elif is_zebra:
-                    row_str += "Z"
-                elif is_lion:
-                    row_str += "L"
-                # mark game field and obstacles
-                elif row in [-1, self.board_height] or col in [-1, self.board_width]:
-                    row_str += " "
-                elif (col, row) in self.obstacles:
-                    row_str += "#"
-                else:
-                    row_str += "-"
-            board_str += f"{row_str}\n"
-
-        if self.alternate:
-            print(f"Stage {state.k // 2}.{state.k%2}")
-        else:
-            print(f"Stage {state.k}")
-        print(board_str)
-
-    def get_lion_coord(self):
-        """Compute the Lion's current position with respect to the game board coordinates.
-
-        Args:
-            state_in (State, optional): The current state. Defaults to the game's state.
-
-        Returns:
-            (int, int): The Lion's (x,y) coordinates
-        """
-        state = self.state.copy()
-
-        cum_lion_spaces = [sum(self.lion_spaces[j] for j in range(i)) for i in range(4)]
-
-        if state.lion < cum_lion_spaces[1]:
-            offset = state.lion
-            return (1 + offset, -1)
-        elif state.lion in range(cum_lion_spaces[1], cum_lion_spaces[2]):
-            offset = state.lion - cum_lion_spaces[1]
-            return (self.board_width, 1 + offset)
-        elif state.lion in range(cum_lion_spaces[2], cum_lion_spaces[3]):
-            offset = state.lion - cum_lion_spaces[2]
-            return (self.board_width - 2 - offset, self.board_height)
-        else:
-            offset = state.lion - cum_lion_spaces[3]
-            return (-1, self.board_height - 2 - offset)
 
     def zebra_action_space(self, state_in=None):
         """Return the action space of the Zebra from the current state.
@@ -155,13 +97,13 @@ class Game:
         allowed = ["X"]
 
         if not self.alternate or state.k % 2 == 0:
-            if (state.x, state.y - 1) not in self.obstacles:
+            if (state.x, state.y - 1) not in self.state.obstacles:
                 allowed.append("N")
-            if (state.x + 1, state.y) not in self.obstacles:
+            if (state.x + 1, state.y) not in self.state.obstacles:
                 allowed.append("E")
-            if (state.x, state.y + 1) not in self.obstacles:
+            if (state.x, state.y + 1) not in self.state.obstacles:
                 allowed.append("S")
-            if (state.x - 1, state.y) not in self.obstacles:
+            if (state.x - 1, state.y) not in self.state.obstacles:
                 allowed.append("W")
 
         return allowed
@@ -201,9 +143,9 @@ class Game:
 
         if state.k > self.max_stages:  # timeout
             return True
-        if state.x < 0 or state.x >= self.board_width:  # escape to left  or right
+        if state.x < 0 or state.x >= self.state.board_width:  # escape to left  or right
             return True
-        if state.y < 0 or state.y >= self.board_height:  # escape to top or bottom
+        if state.y < 0 or state.y >= self.state.board_height:  # escape to top or bottom
             return True
         return False
 
@@ -221,17 +163,19 @@ class Game:
         state = state_in.copy()
 
         if self.is_exact_catch:
-            return self.get_lion_coord() == (state.x, state.y)
+            return self.state.get_lion_coord() == (state.x, state.y)
 
-        cum_lion_spaces = [sum(self.lion_spaces[j] for j in range(i)) for i in range(4)]
+        cum_lion_spaces = [
+            sum(self.state.lion_spaces[j] for j in range(i)) for i in range(4)
+        ]
 
         if state.y < 0 and state.lion < cum_lion_spaces[1]:
             return True
-        if state.x >= self.board_width and state.lion in range(
+        if state.x >= self.state.board_width and state.lion in range(
             cum_lion_spaces[1], cum_lion_spaces[2]
         ):
             return True
-        if state.y >= self.board_height and state.lion in range(
+        if state.y >= self.state.board_height and state.lion in range(
             cum_lion_spaces[2], cum_lion_spaces[3]
         ):
             return True
@@ -269,7 +213,7 @@ class Game:
         state.x += delta_z[zebra_dir][0]
         state.y += delta_z[zebra_dir][1]
         state.lion += lion_dir
-        state.lion %= sum(self.lion_spaces)
+        state.lion %= sum(self.state.lion_spaces)
         state.k += 1
 
         return state
@@ -301,96 +245,6 @@ class Game:
 
         return J
 
-    def compute_policies(self):
-        """Compute the optimal values and policies.
-
-        The recursive algorithm for computing the cost-to-go function is used. The boundary
-        conditions are defined at one stage beyond the state limit, and the Zebra taking one step
-        outside of the board in any direction. At each state, the pure security polices are computed
-        first. If a pure saddle point does not exist, then a mixed saddle point is found using the
-        SciPy linprog function.
-
-        Returns:
-            dict: Maps states to the cost-to-go from that state.
-            dict: Maps states to the optimal policy for the Zebra from that state.
-            dict: Maps states to the optimal policy for the Lion from that state.
-        """
-        V = {}
-        gamma = {}
-        sigma = {}
-
-        # boundary conditions
-        for state_tuple in itertools.product(
-            [self.max_stages],
-            range(-1, self.board_width + 1),
-            range(-1, self.board_height + 1),
-            range(sum(self.lion_spaces)),
-        ):
-            state = State(*state_tuple)
-            V[state] = self.fail_cost
-
-        for state_tuple in itertools.product(
-            range(self.max_stages),
-            [-1, self.board_width],
-            range(self.board_height),
-            range(sum(self.lion_spaces)),
-        ):
-            state = State(*state_tuple)
-            V[state] = self.fail_cost if self.is_zebra_caught(state) else 0
-
-        for state_tuple in itertools.product(
-            range(self.max_stages),
-            range(self.board_width),
-            [-1, self.board_height],
-            range(sum(self.lion_spaces)),
-        ):
-            state = State(*state_tuple)
-            V[state] = self.fail_cost if self.is_zebra_caught(state) else 0
-        # recursively compute cost-to-go
-        for state_tuple in itertools.product(
-            reversed(range(self.max_stages)),
-            range(self.board_width),
-            range(self.board_height),
-            range(sum(self.lion_spaces)),
-        ):
-            state = State(*state_tuple)
-            if (state.x, state.y) in self.obstacles:
-                continue
-
-            # get allowable actions from current state
-            Gamma = self.zebra_action_space(state)
-            Sigma = self.lion_action_space(state)
-
-            # create matrix game
-            A = np.empty((len(Gamma), len(Sigma)))
-            for i, zebra_dir in enumerate(Gamma):
-                for j, lion_dir in enumerate(Sigma):
-                    next_state = self.next_state(zebra_dir, lion_dir, state)
-                    A[i][j] = self.inc_cost + V[next_state]
-
-            # solve matrix game
-            i_star = np.argmin(np.max(A, axis=1))
-            j_star = np.argmax(np.min(A, axis=0))
-            V_under = np.max(A, axis=1)[i_star]
-            V_over = np.min(A, axis=0)[j_star]
-
-            # check whether saddle point was found
-            if V_under == V_over:
-                gamma[state] = Gamma[i_star]
-                sigma[state] = Sigma[j_star]
-                V[state] = V_under
-            else:
-                # compute mixed saddle point using linear programming
-                V[state], y_star, z_star = solve_matrix_mixed(A)
-                gamma[state] = {
-                    action: y_star.item(i) for i, action in enumerate(Gamma)
-                }
-                sigma[state] = {
-                    action: z_star.item(i) for i, action in enumerate(Sigma)
-                }
-
-        return V, gamma, sigma
-
     def play_single(self, zebra_dir, lion_dir):
         """Play a single turn and advance the game's state.
 
@@ -399,7 +253,7 @@ class Game:
             lion_dir (int): The Lion's action.
         """
         self.state = self.next_state(zebra_dir, lion_dir)
-        self.print_game()
+        self.state.print_state()
 
     def play(self, gamma, sigma):
         """Play  the game until the end, printing the state after each turn.
@@ -408,86 +262,8 @@ class Game:
             gamma (function): Given the state, returns a pure or mixed policy for the Zebra.
             sigma (function): Given the state, returns a pure or mixed policy for the Lion.
         """
-        self.print_game()
+        self.state.print_state()
         while not self.is_game_over():
             zebra_dir = gamma(self.state)
             lion_dir = sigma(self.state)
             self.play_single(zebra_dir, lion_dir)
-
-
-def choose_action(policy):
-    """Choose an action according to the policy.
-
-    To implement a mixed policy, the input policy should be a dict that maps actions to its
-    probability. A random action is then returned, using the corresponding probabilites as weights.
-
-    To implement a pure policy, the input policy should be the action itself. It is then simply
-    returned.
-
-    Args:
-        policy (variable type): A single action, or a dict that maps actions to probabilities.
-
-    Returns:
-        variable type: The action.
-    """
-    if not isinstance(policy, dict):
-        return policy
-
-    actions = list(policy.keys())
-    weights = np.array([policy[a] for a in actions])
-
-    return np.random.choice(actions, p=weights / sum(weights))
-
-
-def mixed_minmax(A):
-    """Compute a mixed security policy for the minimizer of a matrix game.
-
-    Args:
-        A (2-D array): The matrix game.
-
-    Returns:
-        float: Mixed security level.
-        1-D array: Mixed security policy.
-    """
-    y_length = A.shape[0]
-    z_length = A.shape[1]
-
-    x_length = y_length + 1
-
-    c = np.zeros(x_length)
-    c[0] = 1
-
-    A_ub = np.block([-np.ones((z_length, 1)), A.T])
-    b_ub = np.zeros(z_length)
-
-    A_eq = np.ones((1, x_length))
-    A_eq[0][0] = 0
-    b_eq = 1
-
-    bounds = [(None, None)] + [(0, None)] * y_length
-
-    result = linprog(c, A_ub, b_ub, A_eq, b_eq, bounds)
-
-    policy = result.x[1:].T
-    value = result.x[0]
-
-    return policy, value
-
-
-def solve_matrix_mixed(A):
-    """Compute a mixed saddle point for a matrix game.
-
-    Args:
-        A (2-D array): The matrix game.
-
-    Returns:
-        float: Mixed value for the game.
-        1-D array: Mixed security policy for the minimizer.
-        1-D array: Mixed security policy for the maximizer.
-    """
-    y_star, value = mixed_minmax(A)
-
-    # player 2 behaves oppositely
-    z_star, _ = mixed_minmax(-A.T)
-
-    return value, y_star, z_star
